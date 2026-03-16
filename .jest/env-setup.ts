@@ -1,0 +1,1 @@
+process.env.URL_SHORTENER_TABLE = 'UrlShortener';

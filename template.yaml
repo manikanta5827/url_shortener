@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  url_shortener project
+
+Globals:
+  Function:
+    Timeout: 3
+    LoggingConfig:
+      LogFormat: JSON
+
+Resources:
+  # My api gateway
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Dev
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowMethods: "'GET,POST,OPTIONS'"
+
+  # dynamo db creation
+  UrlShortenerTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UrlShortener
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+
+        - AttributeName: gsi1pk
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+
+          Projection:
+            ProjectionType: KEYS_ONLY
+
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  # lambda function
+  UrlShortenerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: app.lambdaHandler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UrlShortenerTable
+      Events:
+        GetShortUrl:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /get-short-url
+            Method: post
+        GetOriginalUrl:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /get-original-url/{id}
+            Method: get
+      Environment:
+        Variables:
+          URL_SHORTENER_TABLE: !Ref UrlShortenerTable
+
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/app.ts
+
+Outputs:
+  GetShortUrlApi:
+    Description: API Gateway endpoint URL for Prod stage for getting short url function
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/Dev/get-short-url/"
+
+  GetOriginalUrlApi:
+    Description: API Gateway endpoint URL for Prod stage for getting original url function
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/Dev/get-original-url/{id}"
+
+  UrlShortenerFunction:
+    Description: URL Shortener Lambda ARN
+    Value: !GetAtt UrlShortenerFunction.Arn
